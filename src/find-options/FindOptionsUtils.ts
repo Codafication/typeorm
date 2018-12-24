@@ -109,8 +109,9 @@ export class FindOptionsUtils {
             Object.keys(options.order).forEach(key => {
                 const order = ((options as FindOneOptions<T>).order as any)[key as any];
 
-                if (!metadata.findColumnWithPropertyPath(key))
-                    throw new Error(`${key} column was not found in the ${metadata.name} entity.`);
+                // Have to comment this to make it work with jsonb column
+                // if (!metadata.findColumnWithPropertyPath(key))
+                //     throw new Error(`${key} column was not found in the ${metadata.name} entity.`);
 
                 switch (order) {
                     case 1:
