@@ -1,3 +1,4 @@
+import {CockroachDriver} from "../driver/cockroachdb/CockroachDriver";
 import {EntityMetadata} from "../metadata/EntityMetadata";
 import {ColumnMetadata} from "../metadata/ColumnMetadata";
 import {IndexMetadata} from "../metadata/IndexMetadata";
@@ -20,6 +21,7 @@ import {CheckMetadata} from "../metadata/CheckMetadata";
 import {SqlServerDriver} from "../driver/sqlserver/SqlServerDriver";
 import {PostgresDriver} from "../driver/postgres/PostgresDriver";
 import {ExclusionMetadata} from "../metadata/ExclusionMetadata";
+import {AuroraDataApiDriver} from "../driver/aurora-data-api/AuroraDataApiDriver";
 
 /**
  * Builds EntityMetadata objects and all its sub-metadatas.
@@ -70,7 +72,7 @@ export class EntityMetadataBuilder {
         const allTables = entityClasses ? this.metadataArgsStorage.filterTables(entityClasses) : this.metadataArgsStorage.tables;
 
         // filter out table metadata args for those we really create entity metadatas and tables in the db
-        const realTables = allTables.filter(table => table.type === "regular" || table.type === "closure" || table.type === "entity-child");
+        const realTables = allTables.filter(table => table.type === "regular" || table.type === "closure" || table.type === "entity-child" || table.type === "view");
 
         // create entity metadatas for a user defined entities (marked with @Entity decorator or loaded from entity schemas)
         const entityMetadatas = realTables.map(tableArgs => this.createEntityMetadata(tableArgs));
@@ -127,7 +129,7 @@ export class EntityMetadataBuilder {
                         entityMetadata.foreignKeys.push(foreignKey);
                     }
                     if (uniqueConstraint) {
-                        if (this.connection.driver instanceof MysqlDriver || this.connection.driver instanceof SqlServerDriver) {
+                        if (this.connection.driver instanceof MysqlDriver || this.connection.driver instanceof AuroraDataApiDriver || this.connection.driver instanceof SqlServerDriver) {
                             const index = new IndexMetadata({
                                 entityMetadata: uniqueConstraint.entityMetadata,
                                 columns: uniqueConstraint.columns,
@@ -145,10 +147,38 @@ export class EntityMetadataBuilder {
                                 }).join(" AND ");
                             }
 
-                            entityMetadata.indices.push(index);
+                            if (relation.embeddedMetadata) {
+                                relation.embeddedMetadata.indices.push(index);
+                            } else {
+                                relation.entityMetadata.ownIndices.push(index);
+                            }
+                            this.computeEntityMetadataStep2(entityMetadata);
+
                         } else {
-                            entityMetadata.uniques.push(uniqueConstraint);
+                            if (relation.embeddedMetadata) {
+                                relation.embeddedMetadata.uniques.push(uniqueConstraint);
+                            } else {
+                                relation.entityMetadata.ownUniques.push(uniqueConstraint);
+                            }
+                            this.computeEntityMetadataStep2(entityMetadata);
                         }
+                    }
+
+                    if (foreignKey && this.connection.driver instanceof CockroachDriver) {
+                        const index = new IndexMetadata({
+                            entityMetadata: relation.entityMetadata,
+                            columns: foreignKey.columns,
+                            args: {
+                                target: relation.entityMetadata.target!,
+                                synchronize: true
+                            }
+                        });
+                        if (relation.embeddedMetadata) {
+                            relation.embeddedMetadata.indices.push(index);
+                        } else {
+                            relation.entityMetadata.ownIndices.push(index);
+                        }
+                        this.computeEntityMetadataStep2(entityMetadata);
                     }
                 });
 
@@ -231,7 +261,13 @@ export class EntityMetadataBuilder {
                 if (generated) {
                     column.isGenerated = true;
                     column.generationStrategy = generated.strategy;
-                    column.type = generated.strategy === "increment" ? (column.type || Number) : "uuid";
+                    if (generated.strategy === "uuid") {
+                        column.type = "uuid";
+                    } else if (generated.strategy === "rowid") {
+                        column.type = "int";
+                    } else {
+                        column.type = column.type || Number;
+                    }
                     column.build(this.connection);
                     this.computeEntityMetadataStep2(entityMetadata);
                 }
@@ -443,9 +479,6 @@ export class EntityMetadataBuilder {
 
             return new RelationCountMetadata({ entityMetadata, args });
         });
-        entityMetadata.ownIndices = this.metadataArgsStorage.filterIndices(entityMetadata.inheritanceTree).map(args => {
-            return new IndexMetadata({ entityMetadata, args });
-        });
         entityMetadata.ownListeners = this.metadataArgsStorage.filterListeners(entityMetadata.inheritanceTree).map(args => {
             return new EntityListenerMetadata({ entityMetadata: entityMetadata, args: args });
         });
@@ -460,8 +493,35 @@ export class EntityMetadataBuilder {
             });
         }
 
+        if (this.connection.driver instanceof CockroachDriver) {
+            entityMetadata.ownIndices = this.metadataArgsStorage.filterIndices(entityMetadata.inheritanceTree)
+                .filter(args => !args.unique)
+                .map(args => {
+                    return new IndexMetadata({entityMetadata, args});
+                });
+
+            const uniques = this.metadataArgsStorage.filterIndices(entityMetadata.inheritanceTree)
+                .filter(args => args.unique)
+                .map(args => {
+                    return new UniqueMetadata({
+                        entityMetadata: entityMetadata,
+                        args: {
+                            target: args.target,
+                            name: args.name,
+                            columns: args.columns,
+                        }
+                    });
+                });
+            entityMetadata.ownUniques.push(...uniques);
+
+        } else {
+            entityMetadata.ownIndices = this.metadataArgsStorage.filterIndices(entityMetadata.inheritanceTree).map(args => {
+                return new IndexMetadata({entityMetadata, args});
+            });
+        }
+
         // Mysql stores unique constraints as unique indices.
-        if (this.connection.driver instanceof MysqlDriver) {
+        if (this.connection.driver instanceof MysqlDriver || this.connection.driver instanceof AuroraDataApiDriver) {
             const indices = this.metadataArgsStorage.filterUniques(entityMetadata.inheritanceTree).map(args => {
                 return new IndexMetadata({
                     entityMetadata: entityMetadata,
@@ -477,9 +537,10 @@ export class EntityMetadataBuilder {
             entityMetadata.ownIndices.push(...indices);
 
         } else {
-            entityMetadata.uniques = this.metadataArgsStorage.filterUniques(entityMetadata.inheritanceTree).map(args => {
+            const uniques = this.metadataArgsStorage.filterUniques(entityMetadata.inheritanceTree).map(args => {
                 return new UniqueMetadata({ entityMetadata, args });
             });
+            entityMetadata.ownUniques.push(...uniques);
         }
     }
 
@@ -503,6 +564,9 @@ export class EntityMetadataBuilder {
             });
             embeddedMetadata.indices = this.metadataArgsStorage.filterIndices(targets).map(args => {
                 return new IndexMetadata({ entityMetadata, embeddedMetadata, args });
+            });
+            embeddedMetadata.uniques = this.metadataArgsStorage.filterUniques(targets).map(args => {
+                return new UniqueMetadata({ entityMetadata, embeddedMetadata, args });
             });
             embeddedMetadata.relationIds = this.metadataArgsStorage.filterRelationIds(targets).map(args => {
                 return new RelationIdMetadata({ entityMetadata, args });
@@ -549,6 +613,7 @@ export class EntityMetadataBuilder {
         entityMetadata.beforeUpdateListeners = entityMetadata.listeners.filter(listener => listener.type === "before-update");
         entityMetadata.beforeRemoveListeners = entityMetadata.listeners.filter(listener => listener.type === "before-remove");
         entityMetadata.indices = entityMetadata.embeddeds.reduce((columns, embedded) => columns.concat(embedded.indicesFromTree), entityMetadata.ownIndices);
+        entityMetadata.uniques = entityMetadata.embeddeds.reduce((columns, embedded) => columns.concat(embedded.uniquesFromTree), entityMetadata.ownUniques);
         entityMetadata.primaryColumns = entityMetadata.columns.filter(column => column.isPrimary);
         entityMetadata.nonVirtualColumns = entityMetadata.columns.filter(column => !column.isVirtual);
         entityMetadata.ancestorColumns = entityMetadata.columns.filter(column => column.closureType === "ancestor");

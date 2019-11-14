@@ -111,7 +111,7 @@ You can read more about data mapper on [Wikipedia](https://en.wikipedia.org/wiki
 Example:
 
 ```typescript
-import {BaseEntity, Entity, PrimaryGeneratedColumn, Column} from "typeorm";
+import {Entity, PrimaryGeneratedColumn, Column} from "typeorm";
 
 @Entity()
 export class User {
@@ -185,7 +185,7 @@ Learn more about [custom repositories](custom-repository.md).
 The decision is up to you.
 Both strategies have their own cons and pros.
 
-One thing we should always keep in mind in software development is how we are going to maintain it.
-The `Data Mapper` approach helps you with maintainability of your software which is more effective in bigger apps.
-The `Active record` approach helps you to keep things simple which works good in small apps.
+One thing we should always keep in mind in with software development is how we are going to maintain our applications.
+The `Data Mapper` approach helps with maintainability, which is more effective in bigger apps.
+The `Active record` approach helps keep things simple which works well in smaller apps.
  And simplicity is always a key to better maintainability.

@@ -4,6 +4,7 @@
 export type DatabaseType =
     "mysql"|
     "postgres"|
+    "cockroachdb"|
     "mariadb"|
     "sqlite"|
     "cordova"|
@@ -13,4 +14,5 @@ export type DatabaseType =
     "oracle"|
     "mssql"|
     "mongodb"|
+    "aurora-data-api"|
     "expo";

@@ -1,12 +1,216 @@
-# Changelog
+## [0.2.20](https://github.com/typeorm/typeorm/compare/0.2.19...0.2.20) (2019-10-18)
 
-TypeORM follows a semantic versioning and until `1.0.0` breaking changes may appear in `0.x.x` versions,
-however since API is already quite stable we don't expect too much breaking changes.
-If we missed a note on some change or you have a questions on migrating from old version,
-feel free to ask us and community.
+### Bug Fixes
+
+* ensure distinct property is respected cloning query builder ([#4843](https://github.com/typeorm/typeorm/issues/4843)) ([ea17094](https://github.com/typeorm/typeorm/commit/ea17094)), closes [#4842](https://github.com/typeorm/typeorm/issues/4842)
+* **aurora:** apply mysql query fixes to aurora ([#4779](https://github.com/typeorm/typeorm/issues/4779)) ([ee61c51](https://github.com/typeorm/typeorm/commit/ee61c51))
+* allow EntitySchema to be passed to EntityRepository ([#4884](https://github.com/typeorm/typeorm/issues/4884)) ([652a20e](https://github.com/typeorm/typeorm/commit/652a20e))
+* better timestamp comparison ([#4769](https://github.com/typeorm/typeorm/issues/4769)) ([0a13e6a](https://github.com/typeorm/typeorm/commit/0a13e6a))
+* broken database option when using replication, changes introduced by [#4753](https://github.com/typeorm/typeorm/issues/4753) ([#4826](https://github.com/typeorm/typeorm/issues/4826)) ([df5479b](https://github.com/typeorm/typeorm/commit/df5479b))
+* check for version of MariaDB before extracting COLUMN_DEFAULT ([#4783](https://github.com/typeorm/typeorm/issues/4783)) ([c30b485](https://github.com/typeorm/typeorm/commit/c30b485))
+* connection Reuse is broken in a Lambda environment: ([#4804](https://github.com/typeorm/typeorm/issues/4804)) ([7962036](https://github.com/typeorm/typeorm/commit/7962036))
+* FindOptionUtils export ([#4746](https://github.com/typeorm/typeorm/issues/4746)) ([4a62b1c](https://github.com/typeorm/typeorm/commit/4a62b1c)), closes [#4745](https://github.com/typeorm/typeorm/issues/4745)
+* loading of aurora-data-api driver ([#4765](https://github.com/typeorm/typeorm/issues/4765)) ([fbb8947](https://github.com/typeorm/typeorm/commit/fbb8947))
+* **postgres:** postgres query runner to create materialized view ([#4877](https://github.com/typeorm/typeorm/issues/4877)) ([d744966](https://github.com/typeorm/typeorm/commit/d744966))
+* migrations run in reverse order for mongodb ([#4702](https://github.com/typeorm/typeorm/issues/4702)) ([2f27581](https://github.com/typeorm/typeorm/commit/2f27581))
+* mongodb Cursor.forEach types ([#4759](https://github.com/typeorm/typeorm/issues/4759)) ([fccbe3e](https://github.com/typeorm/typeorm/commit/fccbe3e))
+* Slack invite URL ([#4836](https://github.com/typeorm/typeorm/issues/4836)) ([149af26](https://github.com/typeorm/typeorm/commit/149af26))
+
+
+### Features
+
+* add name to MigrationInterface (fixes [#3933](https://github.com/typeorm/typeorm/issues/3933) and fixes [#2549](https://github.com/typeorm/typeorm/issues/2549)) ([#4873](https://github.com/typeorm/typeorm/issues/4873)) ([4a73fde](https://github.com/typeorm/typeorm/commit/4a73fde))
+* add new transaction mode to wrap each migration in transaction ([#4629](https://github.com/typeorm/typeorm/issues/4629)) ([848fb1f](https://github.com/typeorm/typeorm/commit/848fb1f))
+* add option to Column to specify the complete enumName ([#4824](https://github.com/typeorm/typeorm/issues/4824)) ([d967180](https://github.com/typeorm/typeorm/commit/d967180))
+* add support for cube array for PostgreSQL ([#4848](https://github.com/typeorm/typeorm/issues/4848)) ([154a441](https://github.com/typeorm/typeorm/commit/154a441))
+* implements Sqlite 'WITHOUT ROWID' table modifier ([#4688](https://github.com/typeorm/typeorm/issues/4688)) ([c1342ad](https://github.com/typeorm/typeorm/commit/c1342ad)), closes [#3330](https://github.com/typeorm/typeorm/issues/3330)
+
+## [0.2.19](https://github.com/typeorm/typeorm/compare/0.2.18...0.2.19) (2019-09-13)
+
+### Bug Fixes
+
+* "database" option error in driver when use "url" option for connection ([690e6f5](https://github.com/typeorm/typeorm/commit/690e6f5))
+* "hstore injection" & properly handle NULL, empty string, backslashes & quotes in hstore key/value pairs ([#4720](https://github.com/typeorm/typeorm/issues/4720)) ([3abe5b9](https://github.com/typeorm/typeorm/commit/3abe5b9))
+* add SaveOptions and RemoveOptions into ActiveRecord ([#4318](https://github.com/typeorm/typeorm/issues/4318)) ([a6d7ba2](https://github.com/typeorm/typeorm/commit/a6d7ba2))
+* apostrophe in Postgres enum strings breaks query ([#4631](https://github.com/typeorm/typeorm/issues/4631)) ([445c740](https://github.com/typeorm/typeorm/commit/445c740))
+* change PrimaryColumn decorator to clone passed options ([#4571](https://github.com/typeorm/typeorm/issues/4571)) ([3cf470d](https://github.com/typeorm/typeorm/commit/3cf470d)), closes [#4570](https://github.com/typeorm/typeorm/issues/4570)
+* createQueryBuilder relation remove works only if using ID ([#2632](https://github.com/typeorm/typeorm/issues/2632)) ([#4734](https://github.com/typeorm/typeorm/issues/4734)) ([1d73a90](https://github.com/typeorm/typeorm/commit/1d73a90))
+* resolve issue with conversion string to simple-json ([#4476](https://github.com/typeorm/typeorm/issues/4476)) ([d1594f5](https://github.com/typeorm/typeorm/commit/d1594f5)), closes [#4440](https://github.com/typeorm/typeorm/issues/4440)
+* sqlite connections don't ignore the schema property ([#4599](https://github.com/typeorm/typeorm/issues/4599)) ([d8f1c81](https://github.com/typeorm/typeorm/commit/d8f1c81))
+* the excessive stack depth comparing types `FindConditions<?>` and `FindConditions<?>` problem ([#4470](https://github.com/typeorm/typeorm/issues/4470)) ([7a0beed](https://github.com/typeorm/typeorm/commit/7a0beed))
+* views generating broken Migrations ([#4726](https://github.com/typeorm/typeorm/issues/4726)) ([c52b3d2](https://github.com/typeorm/typeorm/commit/c52b3d2)), closes [#4123](https://github.com/typeorm/typeorm/issues/4123)
+
+
+### Features
+
+* add `set` datatype support for MySQL/MariaDB ([#4538](https://github.com/typeorm/typeorm/issues/4538)) ([19e2179](https://github.com/typeorm/typeorm/commit/19e2179)), closes [#2779](https://github.com/typeorm/typeorm/issues/2779)
+* add materialized View support for Postgres ([#4478](https://github.com/typeorm/typeorm/issues/4478)) ([dacac83](https://github.com/typeorm/typeorm/commit/dacac83)), closes [#4317](https://github.com/typeorm/typeorm/issues/4317) [#3996](https://github.com/typeorm/typeorm/issues/3996)
+* add mongodb `useUnifiedTopology` config parameter ([#4684](https://github.com/typeorm/typeorm/issues/4684)) ([92e4270](https://github.com/typeorm/typeorm/commit/92e4270))
+* add multi-dimensional cube support for PostgreSQL ([#4378](https://github.com/typeorm/typeorm/issues/4378)) ([b6d6278](https://github.com/typeorm/typeorm/commit/b6d6278))
+* add options to input init config for sql.js ([#4560](https://github.com/typeorm/typeorm/issues/4560)) ([5c311ed](https://github.com/typeorm/typeorm/commit/5c311ed))
+* add postgres pool error handler ([#4474](https://github.com/typeorm/typeorm/issues/4474)) ([a925be9](https://github.com/typeorm/typeorm/commit/a925be9))
+* add referenced table metadata to NamingStrategy to resolve foreign key name ([#4274](https://github.com/typeorm/typeorm/issues/4274)) ([0094f61](https://github.com/typeorm/typeorm/commit/0094f61)), closes [#3847](https://github.com/typeorm/typeorm/issues/3847) [#1355](https://github.com/typeorm/typeorm/issues/1355)
+* add support for ON CONFLICT for cockroach ([#4518](https://github.com/typeorm/typeorm/issues/4518)) ([db8074a](https://github.com/typeorm/typeorm/commit/db8074a)), closes [#4513](https://github.com/typeorm/typeorm/issues/4513)
+* Added support for DISTINCT queries ([#4109](https://github.com/typeorm/typeorm/issues/4109)) ([39a8e34](https://github.com/typeorm/typeorm/commit/39a8e34))
+* Aurora Data API ([#4375](https://github.com/typeorm/typeorm/issues/4375)) ([c321562](https://github.com/typeorm/typeorm/commit/c321562))
+* export additional schema builder classes ([#4325](https://github.com/typeorm/typeorm/issues/4325)) ([e589fda](https://github.com/typeorm/typeorm/commit/e589fda))
+* log files loaded from glob patterns ([#4346](https://github.com/typeorm/typeorm/issues/4346)) ([e12479e](https://github.com/typeorm/typeorm/commit/e12479e)), closes [#4162](https://github.com/typeorm/typeorm/issues/4162)
+* UpdateResult returns affected rows in postgresql ([#4432](https://github.com/typeorm/typeorm/issues/4432)) ([7808bba](https://github.com/typeorm/typeorm/commit/7808bba)), closes [#1308](https://github.com/typeorm/typeorm/issues/1308)
+
+## 0.2.18
+
+### Bug fixes
+
+* fixed loadRelationCountAndMap when entities' primary keys are strings ([#3946](https://github.com/typeorm/typeorm/issues/3946))
+* fixed QueryExpressionMap not cloning all values correctly ([#4156](https://github.com/typeorm/typeorm/issues/4156))
+* fixed transform embeddeds with no columns but with nested embeddeds (mongodb) ([#4131](https://github.com/typeorm/typeorm/pull/4131))
+* fixed the getMany() result being droped randomly bug when using the buffer as primary key. ([#4220](https://github.com/typeorm/typeorm/issues/4220))
+
+### Features
+
+* adds `typeorm migration:show` command ([#4173](https://github.com/typeorm/typeorm/pull/4173))
+* deprecate column `readonly` option in favor of `update` and `insert` options ([#4035](https://github.com/typeorm/typeorm/pull/4035))
+* support sql.js v1.0 ([#4104](https://github.com/typeorm/typeorm/issues/4104))
+* added support for `orUpdate` in SQLlite ([#4097](https://github.com/typeorm/typeorm/pull/4097))
+* added support for `dirty_read` (NOLOCK) in SQLServer ([#4133](https://github.com/typeorm/typeorm/pull/4133))
+* extend afterLoad() subscriber interface to take LoadEvent ([issue #4185](https://github.com/typeorm/typeorm/issues/4185))
+* relation decorators (e.g. `@OneToMany`) now also accept `string` instead of `typeFunction`, which prevents circular dependency issues in the frontend/browser ([issue #4190](https://github.com/typeorm/typeorm/issues/4190))
+* added support for metadata reflection in typeorm-class-transformer-shim.js ([issue #4219](https://github.com/typeorm/typeorm/issues/4219))
+* added `sqlJsConfig` to input config when initializing sql.js ([issue #4559](https://github.com/typeorm/typeorm/issues/4559))
+
+## 0.2.17 (2019-05-01)
+
+### Bug fixes
+
+* fixed transform embeddeds with boolean values (mongodb) ([#3900](https://github.com/typeorm/typeorm/pull/3900))
+* fixed issue with schema inheritance in STI pattern ([#3957](https://github.com/typeorm/typeorm/issues/3957))
+* revert changes from [#3814](https://github.com/typeorm/typeorm/pull/3814) ([#3828](https://github.com/typeorm/typeorm/pull/3828))
+* fix performance issue when inserting into raw tables with QueryBuilder
+  ([#3931](https://github.com/typeorm/typeorm/issues/3931))
+* sqlite date hydration is susceptible to corruption ([#3949](https://github.com/typeorm/typeorm/issues/3949))
+* fixed mongodb uniques, support 3 ways to define uniques ([#3986](https://github.com/typeorm/typeorm/pull/3986))
+* fixed mongodb TTL index ([#4044](https://github.com/typeorm/typeorm/pull/4044))
+
+### Features
+
+* added deferrable options for foreign keys (postgres) ([#2191](https://github.com/typeorm/typeorm/issues/2191))
+* added View entity implementation ([#1024](https://github.com/typeorm/typeorm/issues/1024)). Read more at [View entities](https://typeorm.io/#/view-entities)
+* added multiple value transformer support ([#4007](https://github.com/typeorm/typeorm/issues/4007))
+
+## 0.2.16 (2019-03-26)
+
+### Bug fixes
+
+* removed unused parameters from `insert`, `update`, `delete` methods ([#3888](https://github.com/typeorm/typeorm/pull/3888))
+* fixed: migration generator produces duplicated changes ([#1960](https://github.com/typeorm/typeorm/issues/1960))
+* fixed: unique constraint not created on embedded entity field ([#3142](https://github.com/typeorm/typeorm/issues/3142))
+* fixed: FK columns have wrong length when PrimaryGeneratedColumn('uuid') is used ([#3604](https://github.com/typeorm/typeorm/issues/3604))
+* fixed: column option unique sqlite error ([#3803](https://github.com/typeorm/typeorm/issues/3803))
+* fixed: 'uuid' in PrimaryGeneratedColumn causes Many-to-Many Relationship to Fail ([#3151](https://github.com/typeorm/typeorm/issues/3151))
+* fixed: sync enums on schema sync ([#3694](https://github.com/typeorm/typeorm/issues/3694))
+* fixed: changes in enum type is not reflected when generating migration (in definition file) ([#3244](https://github.com/typeorm/typeorm/issues/3244))
+* fixed: migration will keep create and drop indexes if index name is the same across tables ([#3379](https://github.com/typeorm/typeorm/issues/3379))
+
+### Features
+
+* added `lock` option in `FindOptions`
+
+## 0.2.15 (2019-03-14)
+
+### Bug fixes
+
+* fixed bug in `connection.dropDatabase` method ([#1414](https://github.com/typeorm/typeorm/pull/3727))
+* fixed "deep relations" not loaded/mapped due to the built-in max length of Postgres ([#3118](https://github.com/typeorm/typeorm/issues/3118))
+* updated all dependencies
+* fixed types issue from [#3725](https://github.com/typeorm/typeorm/issues/3725)
+* removed sql-function-support (`() => ` syntax) in parameters to prevent security considerations
+* fix sync schema issue with postgres enum in case capital letters in entity name ([#3536](https://github.com/typeorm/typeorm/issues/3536))
+
+### Features
+
+* added `uuidExtension` option to Postgres connection options, which allows TypeORM to use the newer `pgcrypto` extension to generate UUIDs
+
+## 0.2.14 (2019-02-25)
+
+### Bug fixes
+
+* fixed migration issue with postgres numeric enum type - change queries are not generated if enum is not modified ([#3587](https://github.com/typeorm/typeorm/issues/3587))
+* fixed mongodb entity listeners in optional embeddeds ([#3450](https://github.com/typeorm/typeorm/issues/3450))
+* fixes returning invalid delete result
+* reverted lazy loading properties not enumerable feature to fix related bugs
+
+### Features
+
+* added CockroachDB support
+* added browser entry point to `package.json` ([3583](https://github.com/typeorm/typeorm/issues/3583))
+* replaced backend-only drivers by dummy driver in browser builds
+* added `useLocalForage` option to Sql.js connection options, which enables asynchronous load and save operations of the datatbase from the indexedDB ([#3554](https://github.com/typeorm/typeorm/issues/3554))
+* added simple-enum column type ([#1414](https://github.com/typeorm/typeorm/issues/1414))
+
+## 0.2.13 (2019-02-10)
+
+### Bug Fixes
+
+* fixed undefined object id field in case property name is `_id` ([3517](https://github.com/typeorm/typeorm/issues/3517))
+* allow to use mongodb index options in `Index` decorator ([#3592](https://github.com/typeorm/typeorm/pull/3592))
+* fixed entity embeddeds indices in mongodb ([#3585](https://github.com/typeorm/typeorm/pull/3585))
+* fixed json/jsonb column data types comparison ([#3496](https://github.com/typeorm/typeorm/issues/3496))
+* fixed increment/decrement value of embedded entity ([#3182](https://github.com/typeorm/typeorm/issues/3182))
+* fixed missing call `transformer.from()` in case column is NULL ([#3395](https://github.com/typeorm/typeorm/issues/3395))
+* fixed signatures of `update`/`insert` methods, some `find*` methods in repositories, entity managers, BaseEntity and QueryBuilders
+* handle embedded documents through multiple levels in mongodb ([#3551](https://github.com/typeorm/typeorm/issues/3551))
+* fixed hanging connections in `mssql` driver ([#3327](https://github.com/typeorm/typeorm/pull/3327))
+
+### Features
+
+* Injection 2nd parameter(options) of constructor to `ioredis/cluster` is now possible([#3538](https://github.com/typeorm/typeorm/issues/3538))
+
+## 0.2.12 (2019-01-20)
+
+### Bug Fixes
+
+* fixed mongodb entity listeners and subscribers ([#1527](https://github.com/typeorm/typeorm/issues/1527))
+* fixed connection options builder - paramters parsed from url are assigned on top of options ([#3442](https://github.com/typeorm/typeorm/pull/3442))
+* fixed issue with logical operator precedence in `QueryBuilder` `whereInIds` ([#2103](https://github.com/typeorm/typeorm/issues/2103))
+* fixed missing `isolationLevel` in `Connection.transaction()` method ([#3363](https://github.com/typeorm/typeorm/issues/3363))
+* fixed broken findOne method with custom join column name
+* fixed issue with uuid in mysql ([#3374](https://github.com/typeorm/typeorm/issues/3374))
+* fixed missing export of `Exclusion` decorator
+* fixed ignored extra options in mongodb driver ([#3403](https://github.com/typeorm/typeorm/pull/3403), [#1741](https://github.com/typeorm/typeorm/issues/1741))
+* fixed signature of root `getRepository` function to accept `EntitySchema<Entity>` ([#3402](https://github.com/typeorm/typeorm/pull/3402))
+* fixed false undefined connection options passed into mongodb client ([#3366](https://github.com/typeorm/typeorm/pull/3366))
+* fixed ER_DUP_FIELDNAME with simple find ([#3350](https://github.com/typeorm/typeorm/issues/3350))
+
+### Features
+
+* added `tslib` to reduce package size ([#3457](https://github.com/typeorm/typeorm/issues/3457), [#3458](https://github.com/typeorm/typeorm/pull/3458))
+* queries are simplified in `findByIds` and `whereInIds` for simple entities with single primary key ([#3431](https://github.com/typeorm/typeorm/pull/3431))
+* added `ioredis` and `ioredis-cluster` cache support ([#3289](https://github.com/typeorm/typeorm/pull/3289),[#3364](https://github.com/typeorm/typeorm/pull/3364))
+* added `LessThanOrEqual` and `MoreThanOrEqual` find options ([#3373](https://github.com/typeorm/typeorm/pull/3373))
+* improve support of string, numeric and heterogeneous enums in postgres and mysql ([#3414](https://github.com/typeorm/typeorm/pull/3414))
+* default value of enum array in postgres is now possible define as typescript array ([#3414](https://github.com/typeorm/typeorm/pull/3414))
+```typescript
+@Column({
+    type: "enum",
+    enum: StringEnum,
+    array: true,
+    default: [StringEnum.ADMIN]
+})
+stringEnums: StringEnum[];
+```
+
+### Breaking changes
+
+* `UpdateQueryBuilder` now throw error if update values are not provided or unknown property is passed into `.set()` method ([#2849](https://github.com/typeorm/typeorm/issues/2849),[#3324](https://github.com/typeorm/typeorm/pull/3324))
+
+
+## 0.2.11
+
+* hot fix for mysql schema sync bug
 
 ## 0.2.10
 
+* allowed caching options from environment variable (#3321)
 * more accurate type for postgres ssl parameters
 * added support for `ON UPDATE CASCADE` relations for mysql
 * `repository.save` returns union type
