@@ -1,3 +1,5 @@
+import { ColumnMetadata } from "../metadata/ColumnMetadata";
+
 /**
  * Provides utilities to transform hydrated and persisted data.
  */
@@ -116,7 +118,7 @@ export class DateUtils {
     }
 
     /**
-     * Converts given value into utc datetime string in a "YYYY-MM-DD HH-mm-ss" format.
+     * Converts given value into utc datetime string in a "YYYY-MM-DD HH-mm-ss.sss" format.
      */
     static mixedDateToUtcDatetimeString(value: Date|any): string|any {
         if (typeof value === "string") {
@@ -168,7 +170,29 @@ export class DateUtils {
     }
 
     static stringToSimpleJson(value: any) {
-        return typeof value === "string" ? JSON.parse(value) : value;
+        try {
+            const simpleJSON = JSON.parse(value); 
+            return (typeof simpleJSON === "object") ? simpleJSON : {};
+       } catch (err) {
+            return {};
+       }
+    }
+
+    static simpleEnumToString(value: any) {
+        return "" + value;
+    }
+
+    static stringToSimpleEnum(value: any, columnMetadata: ColumnMetadata) {
+        if (
+            columnMetadata.enum
+            && !isNaN(value)
+            && columnMetadata.enum.indexOf(parseInt(value)) >= 0
+        ) {
+            // convert to number if that exists in poosible enum options
+            value = parseInt(value);
+        }
+
+        return value;
     }
 
     // -------------------------------------------------------------------------

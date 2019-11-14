@@ -80,6 +80,13 @@ export class PlatformTools {
                     return require("redis");
 
                 /**
+                 * ioredis
+                 */
+                case "ioredis":
+                case "ioredis/cluster":
+                    return require("ioredis");
+
+                /**
                 * sqlite
                 */
                 case "sqlite3":
@@ -115,6 +122,8 @@ export class PlatformTools {
                 case "glob":
                     return require("glob");
 
+                case "typeorm-aurora-data-api-driver":
+                    return require("typeorm-aurora-data-api-driver");
                 /**
                 * default
                 */

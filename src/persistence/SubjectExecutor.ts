@@ -91,7 +91,7 @@ export class SubjectExecutor {
         // console.time("SubjectExecutor.execute");
 
         // broadcast "before" events before we start insert / update / remove operations
-        let broadcasterResult: BroadcasterResult|undefined = undefined;
+        let broadcasterResult: BroadcasterResult | undefined = undefined;
         if (!this.options || this.options.listeners !== false) {
             // console.time(".broadcastBeforeEventsForAll");
             broadcasterResult = this.broadcastBeforeEventsForAll();
@@ -103,6 +103,9 @@ export class SubjectExecutor {
         // recompute only in the case if any listener or subscriber was really executed
         if (broadcasterResult && broadcasterResult.count > 0) {
             // console.time(".recompute");
+            this.insertSubjects.forEach(subject => subject.recompute());
+            this.updateSubjects.forEach(subject => subject.recompute());
+            this.removeSubjects.forEach(subject => subject.recompute());
             this.recompute();
             // console.timeEnd(".recompute");
         }
@@ -206,7 +209,6 @@ export class SubjectExecutor {
      * Executes insert operations.
      */
     protected async executeInsertOperations(): Promise<void> {
-
         // group insertion subjects to make bulk insertions
         const [groupedInsertSubjects, groupedInsertSubjectKeys] = this.groupBulkSubjects(this.insertSubjects, "insert");
 
@@ -221,6 +223,16 @@ export class SubjectExecutor {
             const singleInsertSubjects: Subject[] = [];
             if (this.queryRunner.connection.driver instanceof MongoDriver) {
                 subjects.forEach(subject => {
+                    if (subject.metadata.createDateColumn && subject.entity) {
+                        subject.entity[subject.metadata.createDateColumn.databaseName] = new Date();
+                    }
+
+                    if (subject.metadata.updateDateColumn && subject.entity) {
+                        subject.entity[subject.metadata.updateDateColumn.databaseName] = new Date();
+                    }
+
+                    subject.createValueSetAndPopChangeMap();
+
                     bulkInsertSubjects.push(subject);
                     bulkInsertMaps.push(subject.entity!);
                 });
@@ -249,7 +261,6 @@ export class SubjectExecutor {
 
             // for mongodb we have a bit different insertion logic
             if (this.queryRunner instanceof MongoQueryRunner) {
-
                 const manager = this.queryRunner.manager as MongoEntityManager;
                 const insertResult = await manager.insert(subjects[0].metadata.target, bulkInsertMaps);
                 subjects.forEach((subject, index) => {
@@ -346,7 +357,16 @@ export class SubjectExecutor {
                     delete partialEntity[subject.metadata.objectIdColumn.propertyName];
                 }
 
+                if (subject.metadata.createDateColumn && subject.metadata.createDateColumn.propertyName) {
+                    delete partialEntity[subject.metadata.createDateColumn.propertyName];
+                }
+
+                if (subject.metadata.updateDateColumn && subject.metadata.updateDateColumn.propertyName) {
+                    partialEntity[subject.metadata.updateDateColumn.propertyName] = new Date();
+                }
+
                 const manager = this.queryRunner.manager as MongoEntityManager;
+
                 await manager.update(subject.metadata.target, subject.identifier, partialEntity);
 
             } else {
@@ -475,7 +495,10 @@ export class SubjectExecutor {
 
             // mongo _id remove
             if (this.queryRunner instanceof MongoQueryRunner) {
-                if (subject.metadata.objectIdColumn && subject.metadata.objectIdColumn.databaseName) {
+                if (subject.metadata.objectIdColumn
+                    && subject.metadata.objectIdColumn.databaseName
+                    && subject.metadata.objectIdColumn.databaseName !== subject.metadata.objectIdColumn.propertyName
+                ) {
                     delete subject.entity[subject.metadata.objectIdColumn.databaseName];
                 }
             }
@@ -523,7 +546,7 @@ export class SubjectExecutor {
 
             // merge into entity all generated values returned by a database
             if (subject.generatedMap)
-                this.queryRunner.manager.merge(subject.metadata.target, subject.entity, subject.generatedMap);
+                this.queryRunner.manager.merge(subject.metadata.target as any, subject.entity, subject.generatedMap);
         });
     }
 
@@ -538,7 +561,7 @@ export class SubjectExecutor {
      * Other drivers like postgres and sql server support RETURNING / OUTPUT statement which allows to return generated
      * id for each inserted row, that's why bulk insertion is not limited to junction tables in there.
      */
-    protected groupBulkSubjects(subjects: Subject[], type: "insert"|"delete"): [{ [key: string]: Subject[] }, string[]] {
+    protected groupBulkSubjects(subjects: Subject[], type: "insert" | "delete"): [{ [key: string]: Subject[] }, string[]] {
         const group: { [key: string]: Subject[] } = {};
         const keys: string[] = [];
         const groupingAllowed = type === "delete" || this.queryRunner.connection.driver.isReturningSqlSupported();

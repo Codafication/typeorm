@@ -1,3 +1,4 @@
+import {CockroachDriver} from "../driver/cockroachdb/CockroachDriver";
 import {QueryBuilder} from "./QueryBuilder";
 import {ObjectLiteral} from "../common/ObjectLiteral";
 import {Connection} from "../connection/Connection";
@@ -17,6 +18,10 @@ import {AbstractSqliteDriver} from "../driver/sqlite-abstract/AbstractSqliteDriv
 import {OrderByCondition} from "../find-options/OrderByCondition";
 import {LimitOnUpdateNotSupportedError} from "../error/LimitOnUpdateNotSupportedError";
 import {OracleDriver} from "../driver/oracle/OracleDriver";
+import {UpdateValuesMissingError} from "../error/UpdateValuesMissingError";
+import {EntityColumnNotFound} from "../error/EntityColumnNotFound";
+import {QueryDeepPartialEntity} from "./QueryPartialEntity";
+import {AuroraDataApiDriver} from "../driver/aurora-data-api/AuroraDataApiDriver";
 
 /**
  * Allows to build complex sql queries in a fashion way and execute those queries.
@@ -79,7 +84,16 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
             // execute update query
             const [sql, parameters] = this.getQueryAndParameters();
             const updateResult = new UpdateResult();
-            updateResult.raw = await queryRunner.query(sql, parameters);
+            const result = await queryRunner.query(sql, parameters);
+
+            const driver = queryRunner.connection.driver;
+            if (driver instanceof PostgresDriver) {
+                updateResult.raw = result[0];
+                updateResult.affected = result[1];
+            }
+            else {
+                updateResult.raw = result;
+            }
 
             // if we are updating entities and entity updation is enabled we must update some of entity columns (like version, update date, etc.)
             if (this.expressionMap.updateEntity === true &&
@@ -128,7 +142,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
     /**
      * Values needs to be updated.
      */
-    set(values: ObjectLiteral): this {
+    set(values: QueryDeepPartialEntity<Entity>): this {
         this.expressionMap.valuesSet = values;
         return this;
     }
@@ -357,6 +371,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         const updateColumnAndValues: string[] = [];
         const newParameters: ObjectLiteral = {};
         let parametersCount =   this.connection.driver instanceof MysqlDriver ||
+                                this.connection.driver instanceof AuroraDataApiDriver ||
                                 this.connection.driver instanceof OracleDriver ||
                                 this.connection.driver instanceof AbstractSqliteDriver
             ? 0 : Object.keys(this.expressionMap.nativeParameters).length;
@@ -364,7 +379,14 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
             EntityMetadata.createPropertyPath(metadata, valuesSet).forEach(propertyPath => {
                 // todo: make this and other query builder to work with properly with tables without metadata
                 const columns = metadata.findColumnsWithPropertyPath(propertyPath);
+
+                if (columns.length <= 0) {
+                    throw new EntityColumnNotFound(propertyPath);
+                }
+
                 columns.forEach(column => {
+                    if (!column.isUpdate) { return; }
+
                     const paramName = "upd_" + column.databaseName;
 
                     //
@@ -388,6 +410,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
                         }
 
                         if (this.connection.driver instanceof MysqlDriver ||
+                            this.connection.driver instanceof AuroraDataApiDriver ||
                             this.connection.driver instanceof OracleDriver ||
                             this.connection.driver instanceof AbstractSqliteDriver) {
                             newParameters[paramName] = value;
@@ -396,7 +419,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
                         }
 
                         let expression = null;
-                        if (this.connection.driver instanceof MysqlDriver && this.connection.driver.spatialTypes.indexOf(column.type) !== -1) {
+                        if ((this.connection.driver instanceof MysqlDriver || this.connection.driver instanceof AuroraDataApiDriver) && this.connection.driver.spatialTypes.indexOf(column.type) !== -1) {
                             expression = `GeomFromText(${this.connection.driver.createParameter(paramName, parametersCount)})`;
                         } else if (this.connection.driver instanceof PostgresDriver && this.connection.driver.spatialTypes.indexOf(column.type) !== -1) {
                             if (column.srid != null) {
@@ -432,6 +455,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
                     //     value = new ArrayParameter(value);
 
                     if (this.connection.driver instanceof MysqlDriver ||
+                        this.connection.driver instanceof AuroraDataApiDriver ||
                         this.connection.driver instanceof OracleDriver ||
                         this.connection.driver instanceof AbstractSqliteDriver) {
                         newParameters[key] = value;
@@ -445,9 +469,14 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
             });
         }
 
+        if (updateColumnAndValues.length <= 0) {
+            throw new UpdateValuesMissingError();
+        }
+
         // we re-write parameters this way because we want our "UPDATE ... SET" parameters to be first in the list of "nativeParameters"
         // because some drivers like mysql depend on order of parameters
         if (this.connection.driver instanceof MysqlDriver ||
+            this.connection.driver instanceof AuroraDataApiDriver ||
             this.connection.driver instanceof OracleDriver ||
             this.connection.driver instanceof AbstractSqliteDriver) {
             this.expressionMap.nativeParameters = Object.assign(newParameters, this.expressionMap.nativeParameters);
@@ -458,7 +487,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         const returningExpression = this.createReturningExpression();
 
         // generate and return sql update query
-        if (returningExpression && (this.connection.driver instanceof PostgresDriver || this.connection.driver instanceof OracleDriver)) {
+        if (returningExpression && (this.connection.driver instanceof PostgresDriver || this.connection.driver instanceof OracleDriver || this.connection.driver instanceof CockroachDriver)) {
             return `UPDATE ${this.getTableName(this.getMainTableName())} SET ${updateColumnAndValues.join(", ")}${whereExpression} RETURNING ${returningExpression}`;
 
         } else if (returningExpression && this.connection.driver instanceof SqlServerDriver) {
@@ -495,7 +524,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         let limit: number|undefined = this.expressionMap.limit;
 
         if (limit) {
-            if (this.connection.driver instanceof MysqlDriver) {
+            if (this.connection.driver instanceof MysqlDriver || this.connection.driver instanceof AuroraDataApiDriver) {
                 return " LIMIT " + limit;
             } else {
                 throw new LimitOnUpdateNotSupportedError();
@@ -512,7 +541,7 @@ export class UpdateQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         if (this.expressionMap.valuesSet instanceof Object)
             return this.expressionMap.valuesSet;
 
-        throw new Error(`Cannot perform update query because update values are not defined. Call "qb.set(...)" method to specify inserted values.`);
+        throw new UpdateValuesMissingError();
     }
 
 }

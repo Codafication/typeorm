@@ -36,6 +36,8 @@ import {SqlServerDriver} from "../driver/sqlserver/SqlServerDriver";
 import {MysqlDriver} from "../driver/mysql/MysqlDriver";
 import {ObjectUtils} from "../util/ObjectUtils";
 import {PromiseUtils} from "../";
+import {IsolationLevel} from "../driver/types/IsolationLevel";
+import {AuroraDataApiDriver} from "../driver/aurora-data-api/AuroraDataApiDriver";
 
 /**
  * Connection is a single database ORM connection to a specific database.
@@ -61,7 +63,7 @@ export class Connection {
     /**
      * Indicates if connection is initialized or not.
      */
-    readonly isConnected = false;
+    readonly isConnected: boolean;
 
     /**
      * Database driver used by this connection.
@@ -127,6 +129,7 @@ export class Connection {
         this.queryResultCache = options.cache ? new QueryResultCacheFactory(this).create() : undefined;
         this.relationLoader = new RelationLoader(this);
         this.relationIdLoader = new RelationIdLoader(this);
+        this.isConnected = false;
     }
 
     // -------------------------------------------------------------------------
@@ -255,31 +258,33 @@ export class Connection {
     // TODO rename
     async dropDatabase(): Promise<void> {
         const queryRunner = await this.createQueryRunner("master");
-        if (this.driver instanceof SqlServerDriver || this.driver instanceof MysqlDriver) {
-            const databases: string[] = this.driver.database ? [this.driver.database] : [];
-            this.entityMetadatas.forEach(metadata => {
-                if (metadata.database && databases.indexOf(metadata.database) === -1)
-                    databases.push(metadata.database);
-            });
-            await PromiseUtils.runInSequence(databases, database => queryRunner.clearDatabase(database));
-        } else {
-            await queryRunner.clearDatabase();
+        try {
+            if (this.driver instanceof SqlServerDriver || this.driver instanceof MysqlDriver || this.driver instanceof AuroraDataApiDriver) {
+                const databases: string[] = this.driver.database ? [this.driver.database] : [];
+                this.entityMetadatas.forEach(metadata => {
+                    if (metadata.database && databases.indexOf(metadata.database) === -1)
+                        databases.push(metadata.database);
+                });
+                await PromiseUtils.runInSequence(databases, database => queryRunner.clearDatabase(database));
+            } else {
+                await queryRunner.clearDatabase();
+            }
+        } finally {
+            await queryRunner.release();
         }
-        await queryRunner.release();
     }
 
     /**
      * Runs all pending migrations.
      * Can be used only after connection to the database is established.
      */
-    async runMigrations(options?: { transaction?: boolean }): Promise<Migration[]> {
+    async runMigrations(options?: { transaction?: "all" | "none" | "each" }): Promise<Migration[]> {
         if (!this.isConnected)
             throw new CannotExecuteNotConnectedError(this.name);
 
         const migrationExecutor = new MigrationExecutor(this);
-        if (options && options.transaction === false) {
-            migrationExecutor.transaction = false;
-        }
+        migrationExecutor.transaction = (options && options.transaction) || "all";
+
         const successMigrations = await migrationExecutor.executePendingMigrations();
         return successMigrations;
     }
@@ -288,16 +293,27 @@ export class Connection {
      * Reverts last executed migration.
      * Can be used only after connection to the database is established.
      */
-    async undoLastMigration(options?: { transaction?: boolean }): Promise<void> {
+    async undoLastMigration(options?: { transaction?: "all" | "none" | "each" }): Promise<void> {
 
         if (!this.isConnected)
             throw new CannotExecuteNotConnectedError(this.name);
 
         const migrationExecutor = new MigrationExecutor(this);
-        if (options && options.transaction === false) {
-            migrationExecutor.transaction = false;
-        }
+        migrationExecutor.transaction = (options && options.transaction) || "all";
+
         await migrationExecutor.undoLastMigration();
+    }
+
+    /**
+     * Lists all migrations and whether they have been run.
+     * Returns true if there are pending migrations
+     */
+    async showMigrations(): Promise<boolean> {
+        if (!this.isConnected) {
+            throw new CannotExecuteNotConnectedError(this.name);
+        }
+        const migrationExecutor = new MigrationExecutor(this);
+        return await migrationExecutor.showMigrations();
     }
 
     /**
@@ -355,8 +371,16 @@ export class Connection {
      * Wraps given function execution (and all operations made there) into a transaction.
      * All database operations must be executed using provided entity manager.
      */
-    async transaction(runInTransaction: (entityManager: EntityManager) => Promise<any>): Promise<any> {
-        return this.manager.transaction(runInTransaction);
+    async transaction<T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T>;
+    async transaction<T>(isolationLevel: IsolationLevel, runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T>;
+    async transaction<T>(
+        isolationOrRunInTransaction: IsolationLevel | ((entityManager: EntityManager) => Promise<T>),
+        runInTransactionParam?: (entityManager: EntityManager) => Promise<T>
+    ): Promise<any> {
+        return this.manager.transaction(
+            isolationOrRunInTransaction as any,
+            runInTransactionParam as any
+        );
     }
 
     /**
@@ -455,8 +479,12 @@ export class Connection {
      */
     protected findMetadata(target: Function|EntitySchema<any>|string): EntityMetadata|undefined {
         return this.entityMetadatas.find(metadata => {
-            if (metadata.target === target)
+            if (typeof metadata.target === "function" && typeof target === "function" && metadata.target.name === target.name) {
                 return true;
+            }
+            if (metadata.target === target) {
+                return true;
+            }
             if (target instanceof EntitySchema) {
                 return metadata.name === target.options.name;
             }
@@ -492,8 +520,26 @@ export class Connection {
         const migrations = connectionMetadataBuilder.buildMigrations(this.options.migrations || []);
         ObjectUtils.assign(this, { migrations: migrations });
 
+        this.driver.database = this.getDatabaseName();
+
         // validate all created entity metadatas to make sure user created entities are valid and correct
-        entityMetadataValidator.validateMany(this.entityMetadatas, this.driver);
+        entityMetadataValidator.validateMany(this.entityMetadatas.filter(metadata => metadata.tableType !== "view"), this.driver);
     }
+
+    // This database name property is nested for replication configs.
+    protected getDatabaseName(): string {
+    const options = this.options;
+    switch (options.type) {
+        case "mysql" :
+        case "mariadb" :
+        case "postgres":
+        case "cockroachdb":
+        case "mssql":
+        case "oracle":
+            return (options.replication ? options.replication.master.database : options.database) as string;
+        default:
+            return options.database as string;
+    }
+}
 
 }

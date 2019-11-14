@@ -18,6 +18,7 @@ import {TableColumn} from "../../schema-builder/table/TableColumn";
 import {PostgresConnectionCredentialsOptions} from "./PostgresConnectionCredentialsOptions";
 import {EntityMetadata} from "../../metadata/EntityMetadata";
 import {OrmUtils} from "../../util/OrmUtils";
+import {ApplyValueTransformers} from "../../util/ApplyValueTransformers";
 
 /**
  * Organizes communication with PostgreSQL DBMS.
@@ -147,7 +148,8 @@ export class PostgresDriver implements Driver {
         "tstzrange",
         "daterange",
         "geometry",
-        "geography"
+        "geography",
+        "cube"
     ];
 
     /**
@@ -212,6 +214,12 @@ export class PostgresDriver implements Driver {
         cacheDuration: "int4",
         cacheQuery: "text",
         cacheResult: "text",
+        metadataType: "varchar",
+        metadataDatabase: "varchar",
+        metadataSchema: "varchar",
+        metadataTable: "varchar",
+        metadataName: "varchar",
+        metadataValue: "text",
     };
 
     /**
@@ -227,6 +235,12 @@ export class PostgresDriver implements Driver {
         "timestamp without time zone": { precision: 6 },
         "timestamp with time zone": { precision: 6 },
     };
+
+    /**
+     * Max length allowed by Postgres for aliases.
+     * @see https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
+     */
+    maxAliasLength = 63;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -288,13 +302,16 @@ export class PostgresDriver implements Driver {
         const hasHstoreColumns = this.connection.entityMetadatas.some(metadata => {
             return metadata.columns.filter(column => column.type === "hstore").length > 0;
         });
+        const hasCubeColumns = this.connection.entityMetadatas.some(metadata => {
+            return metadata.columns.filter(column => column.type === "cube").length > 0;
+        });
         const hasGeometryColumns = this.connection.entityMetadatas.some(metadata => {
             return metadata.columns.filter(column => this.spatialTypes.indexOf(column.type) >= 0).length > 0;
         });
         const hasExclusionConstraints = this.connection.entityMetadatas.some(metadata => {
             return metadata.exclusions.length > 0;
         });
-        if (hasUuidColumns || hasCitextColumns || hasHstoreColumns || hasGeometryColumns || hasExclusionConstraints) {
+        if (hasUuidColumns || hasCitextColumns || hasHstoreColumns || hasGeometryColumns || hasCubeColumns || hasExclusionConstraints) {
             await Promise.all([this.master, ...this.slaves].map(pool => {
                 return new Promise((ok, fail) => {
                     pool.connect(async (err: any, connection: any, release: Function) => {
@@ -302,9 +319,9 @@ export class PostgresDriver implements Driver {
                         if (err) return fail(err);
                         if (hasUuidColumns)
                             try {
-                                await this.executeQuery(connection, `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+                                await this.executeQuery(connection, `CREATE EXTENSION IF NOT EXISTS "${this.options.uuidExtension || "uuid-ossp"}"`);
                             } catch (_) {
-                                logger.log("warn", "At least one of the entities has uuid column, but the 'uuid-ossp' extension cannot be installed automatically. Please install it manually using superuser rights");
+                                logger.log("warn", `At least one of the entities has uuid column, but the '${this.options.uuidExtension || "uuid-ossp"}' extension cannot be installed automatically. Please install it manually using superuser rights, or select another uuid extension.`);
                             }
                         if (hasCitextColumns)
                             try {
@@ -323,6 +340,12 @@ export class PostgresDriver implements Driver {
                                 await this.executeQuery(connection, `CREATE EXTENSION IF NOT EXISTS "postgis"`);
                             } catch (_) {
                                 logger.log("warn", "At least one of the entities has a geometry column, but the 'postgis' extension cannot be installed automatically. Please install it manually using superuser rights");
+                            }
+                        if (hasCubeColumns)
+                            try {
+                                await this.executeQuery(connection, `CREATE EXTENSION IF NOT EXISTS "cube"`);
+                            } catch (_) {
+                                logger.log("warn", "At least one of the entities has a cube column, but the 'cube' extension cannot be installed automatically. Please install it manually using superuser rights");
                             }
                         if (hasExclusionConstraints)
                             try {
@@ -373,7 +396,7 @@ export class PostgresDriver implements Driver {
      */
     preparePersistentValue(value: any, columnMetadata: ColumnMetadata): any {
         if (columnMetadata.transformer)
-            value = columnMetadata.transformer.to(value);
+            value = ApplyValueTransformers.transformTo(columnMetadata.transformer, value);
 
         if (value === null || value === undefined)
             return value;
@@ -401,9 +424,18 @@ export class PostgresDriver implements Driver {
             if (typeof value === "string") {
                 return value;
             } else {
-                return Object.keys(value).map(key => {
-                    return `"${key}"=>"${value[key]}"`;
-                }).join(", ");
+                // https://www.postgresql.org/docs/9.0/hstore.html
+                const quoteString = (value: unknown) => {
+                    // If a string to be quoted is `null` or `undefined`, we return a literal unquoted NULL.
+                    // This way, NULL values can be stored in the hstore object.
+                    if (value === null || typeof value === "undefined") {
+                        return "NULL";
+                    }
+                    // Convert non-null values to string since HStore only stores strings anyway.
+                    // To include a double quote or a backslash in a key or value, escape it with a backslash.
+                    return `"${`${value}`.replace(/(?=["\\])/g, "\\")}"`;
+                };
+                return Object.keys(value).map(key => quoteString(key) + "=>" + quoteString(value[key])).join(",");
             }
 
         } else if (columnMetadata.type === "simple-array") {
@@ -411,6 +443,21 @@ export class PostgresDriver implements Driver {
 
         } else if (columnMetadata.type === "simple-json") {
             return DateUtils.simpleJsonToString(value);
+
+        } else if (columnMetadata.type === "cube") {
+            if (columnMetadata.isArray) {
+                return `{${value.map((cube: number[]) => `"(${cube.join(",")})"`).join(",")}}`;
+            }
+            return `(${value.join(",")})`;
+
+        } else if (
+            (
+                columnMetadata.type === "enum"
+                || columnMetadata.type === "simple-enum"
+            )
+            && !columnMetadata.isArray
+        ) {
+            return "" + value;
         }
 
         return value;
@@ -421,7 +468,7 @@ export class PostgresDriver implements Driver {
      */
     prepareHydratedValue(value: any, columnMetadata: ColumnMetadata): any {
         if (value === null || value === undefined)
-            return value;
+            return columnMetadata.transformer ? ApplyValueTransformers.transformFrom(columnMetadata.transformer, value) : value;
 
         if (columnMetadata.type === Boolean) {
             value = value ? true : false;
@@ -441,13 +488,13 @@ export class PostgresDriver implements Driver {
 
         } else if (columnMetadata.type === "hstore") {
             if (columnMetadata.hstoreType === "object") {
-                const regexp = /"(.*?)"=>"(.*?[^\\"])"/gi;
-                const matchValue = value.match(regexp);
+                const unescapeString = (str: string) => str.replace(/\\./g, (m) => m[1]);
+                const regexp = /"([^"\\]*(?:\\.[^"\\]*)*)"=>(?:(NULL)|"([^"\\]*(?:\\.[^"\\]*)*)")(?:,|$)/g;
                 const object: ObjectLiteral = {};
-                let match;
-                while (match = regexp.exec(matchValue)) {
-                    object[match[1].replace(`\\"`, `"`)] = match[2].replace(`\\"`, `"`);
-                }
+                `${value}`.replace(regexp, (_, key, nullValue, stringValue) => {
+                    object[unescapeString(key)] = nullValue ? null : unescapeString(stringValue);
+                    return "";
+                });
                 return object;
 
             } else {
@@ -459,14 +506,49 @@ export class PostgresDriver implements Driver {
 
         } else if (columnMetadata.type === "simple-json") {
             value = DateUtils.stringToSimpleJson(value);
+
+        } else if (columnMetadata.type === "cube") {
+            value = value.replace(/[\(\)\s]+/g, ""); // remove whitespace
+            if (columnMetadata.isArray) {
+                /**
+                 * Strips these groups from `{"1,2,3","",NULL}`:
+                 * 1. ["1,2,3", undefined]  <- cube of arity 3
+                 * 2. ["", undefined]         <- cube of arity 0
+                 * 3. [undefined, "NULL"]     <- NULL
+                 */
+                const regexp = /(?:\"((?:[\d\s\.,])*)\")|(?:(NULL))/g;
+                const unparsedArrayString = value;
+
+                value = [];
+                let cube: RegExpExecArray | null = null;
+                // Iterate through all regexp matches for cubes/null in array
+                while ((cube = regexp.exec(unparsedArrayString)) !== null) {
+                    if (cube[1] !== undefined) {
+                        value.push(cube[1].split(",").filter(Boolean).map(Number));
+                    } else {
+                        value.push(undefined);
+                    }
+                }
+            } else {
+                value = value.split(",").filter(Boolean).map(Number);
+            }
+
+        } else if (columnMetadata.type === "enum" || columnMetadata.type === "simple-enum" ) {
+            if (columnMetadata.isArray) {
+                // manually convert enum array to array of values (pg does not support, see https://github.com/brianc/node-pg-types/issues/56)
+                value = value !== "{}" ? (value as string).substr(1, (value as string).length - 2).split(",") : [];
+                // convert to number if that exists in poosible enum options
+                value = value.map((val: string) => {
+                    return !isNaN(+val) && columnMetadata.enum!.indexOf(parseInt(val)) >= 0 ? parseInt(val) : val;
+                });
+            } else {
+                // convert to number if that exists in poosible enum options
+                value = !isNaN(+value) && columnMetadata.enum!.indexOf(parseInt(value)) >= 0 ? parseInt(value) : value;
+            }
         }
 
-        // manually convert enum array to array of values (pg does not support, see https://github.com/brianc/node-pg-types/issues/56)
-        if (columnMetadata.enum && columnMetadata.isArray)
-            value = value !== "{}" ? (value as string).substr(1, (value as string).length - 2).split(",") : [];
-
         if (columnMetadata.transformer)
-            value = columnMetadata.transformer.from(value);
+            value = ApplyValueTransformers.transformFrom(columnMetadata.transformer, value);
 
         return value;
     }
@@ -554,6 +636,9 @@ export class PostgresDriver implements Driver {
         } else if (column.type === "simple-json") {
             return "text";
 
+        } else if (column.type === "simple-enum") {
+            return "enum";
+
         } else if (column.type === "int2") {
             return "smallint";
 
@@ -587,6 +672,18 @@ export class PostgresDriver implements Driver {
         const defaultValue = columnMetadata.default;
         const arrayCast = columnMetadata.isArray ? `::${columnMetadata.type}[]` : "";
 
+        if (
+            (
+                columnMetadata.type === "enum"
+                || columnMetadata.type === "simple-enum"
+            ) && defaultValue !== undefined
+        ) {
+            if (columnMetadata.isArray && Array.isArray(defaultValue)) {
+                return `'{${defaultValue.map((val: string) => `${val}`).join(",")}}'`;
+            }
+            return `'${defaultValue}'`;
+        }
+
         if (typeof defaultValue === "number") {
             return "" + defaultValue;
 
@@ -598,6 +695,9 @@ export class PostgresDriver implements Driver {
 
         } else if (typeof defaultValue === "string") {
             return `'${defaultValue}'${arrayCast}`;
+
+        } else if (defaultValue === null) {
+            return `null`;
 
         } else if (typeof defaultValue === "object") {
             return `'${JSON.stringify(defaultValue)}'`;
@@ -647,13 +747,13 @@ export class PostgresDriver implements Driver {
         } else if (column.type === "timestamp with time zone") {
             type = "TIMESTAMP" + (column.precision !== null && column.precision !== undefined ? "(" + column.precision + ")" : "") + " WITH TIME ZONE";
         } else if (this.spatialTypes.indexOf(column.type as ColumnType) >= 0) {
-          if (column.spatialFeatureType != null && column.srid != null) {
-            type = `${column.type}(${column.spatialFeatureType},${column.srid})`;
-          } else if (column.spatialFeatureType != null) {
-            type = `${column.type}(${column.spatialFeatureType})`;
-          } else {
-            type = column.type;
-          }
+            if (column.spatialFeatureType != null && column.srid != null) {
+                type = `${column.type}(${column.spatialFeatureType},${column.srid})`;
+            } else if (column.spatialFeatureType != null) {
+                type = `${column.type}(${column.spatialFeatureType})`;
+            } else {
+                type = column.type;
+            }
         }
 
         if (column.isArray)
@@ -705,6 +805,7 @@ export class PostgresDriver implements Driver {
             const column = metadata.findColumnWithDatabaseName(key);
             if (column) {
                 OrmUtils.mergeDeep(map, column.createValueMap(insertResult[key]));
+                // OrmUtils.mergeDeep(map, column.createValueMap(this.prepareHydratedValue(insertResult[key], column))); // TODO: probably should be like there, but fails on enums, fix later
             }
             return map;
         }, {} as ObjectLiteral);
@@ -720,23 +821,32 @@ export class PostgresDriver implements Driver {
             if (!tableColumn)
                 return false; // we don't need new columns, we only need exist and changed
 
-            return  tableColumn.name !== columnMetadata.databaseName
+            return tableColumn.name !== columnMetadata.databaseName
                 || tableColumn.type !== this.normalizeType(columnMetadata)
                 || tableColumn.length !== columnMetadata.length
                 || tableColumn.precision !== columnMetadata.precision
                 || tableColumn.scale !== columnMetadata.scale
                 // || tableColumn.comment !== columnMetadata.comment // todo
-                || (!tableColumn.isGenerated && this.normalizeDefault(columnMetadata) !== tableColumn.default) // we included check for generated here, because generated columns already can have default values
+                || (!tableColumn.isGenerated && this.lowerDefaultValueIfNecessary(this.normalizeDefault(columnMetadata)) !== tableColumn.default) // we included check for generated here, because generated columns already can have default values
                 || tableColumn.isPrimary !== columnMetadata.isPrimary
                 || tableColumn.isNullable !== columnMetadata.isNullable
                 || tableColumn.isUnique !== this.normalizeIsUnique(columnMetadata)
-                || (tableColumn.enum && columnMetadata.enum && !OrmUtils.isArraysEqual(tableColumn.enum, columnMetadata.enum))
+                || (tableColumn.enum && columnMetadata.enum && !OrmUtils.isArraysEqual(tableColumn.enum, columnMetadata.enum.map(val => val + ""))) // enums in postgres are always strings
                 || tableColumn.isGenerated !== columnMetadata.isGenerated
                 || (tableColumn.spatialFeatureType || "").toLowerCase() !== (columnMetadata.spatialFeatureType || "").toLowerCase()
                 || tableColumn.srid !== columnMetadata.srid;
         });
     }
 
+    private lowerDefaultValueIfNecessary(value: string | undefined) {
+        // Postgres saves function calls in default value as lowercase #2733
+        if (!value) {
+            return value;
+        }
+        return value.split(`'`).map((v, i) => {
+            return i % 2 === 1 ? v : v.toLowerCase();
+        }).join(`'`);
+    }
     /**
      * Returns true if driver supports RETURNING / OUTPUT statement.
      */
@@ -749,6 +859,10 @@ export class PostgresDriver implements Driver {
      */
     isUUIDGenerationSupported(): boolean {
         return true;
+    }
+
+    get uuidGenerator(): string {
+        return this.options.uuidExtension === "pgcrypto" ? "gen_random_uuid()" : "uuid_generate_v4()";
     }
 
     /**
@@ -815,11 +929,14 @@ export class PostgresDriver implements Driver {
         // create a connection pool
         const pool = new this.postgres.Pool(connectionOptions);
         const { logger } = this.connection;
+
+        const poolErrorHandler = options.poolErrorHandler || ((error: any) => logger.log("warn", `Postgres pool raised an error. ${error}`));
+
         /*
           Attaching an error handler to pool errors is essential, as, otherwise, errors raised will go unhandled and
           cause the hosting app to crash.
          */
-        pool.on("error", (error: any) => logger.log("warn", `Postgres pool raised an error. ${error}`));
+        pool.on("error", poolErrorHandler);
 
         return new Promise((ok, fail) => {
             pool.connect((err: any, connection: any, release: Function) => {

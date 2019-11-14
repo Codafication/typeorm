@@ -17,6 +17,7 @@ import {PromiseUtils} from "./util/PromiseUtils";
 import {MongoEntityManager} from "./entity-manager/MongoEntityManager";
 import {SqljsEntityManager} from "./entity-manager/SqljsEntityManager";
 import {SelectQueryBuilder} from "./query-builder/SelectQueryBuilder";
+import {EntitySchema} from "./entity-schema/EntitySchema";
 
 // -------------------------------------------------------------------------
 // Commonly Used exports
@@ -33,6 +34,7 @@ export * from "./decorator/columns/PrimaryGeneratedColumn";
 export * from "./decorator/columns/PrimaryColumn";
 export * from "./decorator/columns/UpdateDateColumn";
 export * from "./decorator/columns/VersionColumn";
+export * from "./decorator/columns/ViewColumn";
 export * from "./decorator/columns/ObjectIdColumn";
 export * from "./decorator/listeners/AfterInsert";
 export * from "./decorator/listeners/AfterLoad";
@@ -60,6 +62,7 @@ export * from "./decorator/relations/RelationId";
 export * from "./decorator/entity/Entity";
 export * from "./decorator/entity/ChildEntity";
 export * from "./decorator/entity/TableInheritance";
+export * from "./decorator/entity-view/ViewEntity";
 export * from "./decorator/transaction/Transaction";
 export * from "./decorator/transaction/TransactionManager";
 export * from "./decorator/transaction/TransactionRepository";
@@ -70,6 +73,7 @@ export * from "./decorator/tree/Tree";
 export * from "./decorator/Index";
 export * from "./decorator/Unique";
 export * from "./decorator/Check";
+export * from "./decorator/Exclusion";
 export * from "./decorator/Generated";
 export * from "./decorator/EntityRepository";
 export * from "./find-options/operator/Any";
@@ -78,8 +82,10 @@ export * from "./find-options/operator/Equal";
 export * from "./find-options/operator/In";
 export * from "./find-options/operator/IsNull";
 export * from "./find-options/operator/LessThan";
+export * from "./find-options/operator/LessThanOrEqual";
 export * from "./find-options/operator/Like";
 export * from "./find-options/operator/MoreThan";
+export * from "./find-options/operator/MoreThanOrEqual";
 export * from "./find-options/operator/Not";
 export * from "./find-options/operator/Raw";
 export * from "./find-options/FindConditions";
@@ -89,6 +95,7 @@ export * from "./find-options/FindOperator";
 export * from "./find-options/FindOperatorType";
 export * from "./find-options/JoinOptions";
 export * from "./find-options/OrderByCondition";
+export * from "./find-options/FindOptionsUtils";
 export * from "./logger/Logger";
 export * from "./logger/AdvancedConsoleLogger";
 export * from "./logger/SimpleConsoleLogger";
@@ -102,9 +109,12 @@ export * from "./repository/TreeRepository";
 export * from "./repository/MongoRepository";
 export * from "./repository/RemoveOptions";
 export * from "./repository/SaveOptions";
+export * from "./schema-builder/table/TableCheck";
 export * from "./schema-builder/table/TableColumn";
+export * from "./schema-builder/table/TableExclusion";
 export * from "./schema-builder/table/TableForeignKey";
 export * from "./schema-builder/table/TableIndex";
+export * from "./schema-builder/table/TableUnique";
 export * from "./schema-builder/table/Table";
 export * from "./driver/mongodb/typings";
 export * from "./driver/types/DatabaseType";
@@ -269,7 +279,7 @@ export function getSqljsManager(connectionName: string = "default"): SqljsEntity
 /**
  * Gets repository for the given entity class.
  */
-export function getRepository<Entity>(entityClass: ObjectType<Entity>|string, connectionName: string = "default"): Repository<Entity> {
+export function getRepository<Entity>(entityClass: ObjectType<Entity>|EntitySchema<Entity>|string, connectionName: string = "default"): Repository<Entity> {
     return getConnectionManager().get(connectionName).getRepository<Entity>(entityClass);
 }
 

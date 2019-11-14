@@ -13,7 +13,7 @@ Examples:
 ```typescript
 import {getConnection} from "typeorm";
 
-await getConnection().transaction(transactionalEntityManager => {
+await getConnection().transaction(async transactionalEntityManager => {
     
 });
 ```
@@ -23,7 +23,7 @@ or
 ```typescript
 import {getManager} from "typeorm";
 
-await getManager().transaction(transactionalEntityManager => {
+await getManager().transaction(async transactionalEntityManager => {
     
 });
 ```
@@ -48,7 +48,7 @@ All operations **MUST** be executed using the provided transactional entity mana
 
 ### Specifying Isolation Levels
 
-Specifying the isolation level for the transaction can be done by supplying it as the first paramter:
+Specifying the isolation level for the transaction can be done by supplying it as the first parameter:
 
 ```typescript
 import {getManager} from "typeorm";

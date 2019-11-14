@@ -5,6 +5,7 @@ import {createConnection} from "../index";
 import {MysqlDriver} from "../driver/mysql/MysqlDriver";
 import {camelCase} from "../util/StringUtils";
 import * as yargs from "yargs";
+import {AuroraDataApiDriver} from "../driver/aurora-data-api/AuroraDataApiDriver";
 const chalk = require("chalk");
 
 /**
@@ -51,16 +52,22 @@ export class MigrationGenerateCommand implements yargs.CommandModule {
         // if directory is not set then try to open tsconfig and find default path there
         if (!directory) {
             try {
-                const connectionOptionsReader = new ConnectionOptionsReader({ root: process.cwd(), configName: args.config });
-                const connectionOptions = await connectionOptionsReader.get(args.connection);
+                const connectionOptionsReader = new ConnectionOptionsReader({
+                    root: process.cwd(),
+                    configName: args.config as any
+                });
+                const connectionOptions = await connectionOptionsReader.get(args.connection as any);
                 directory = connectionOptions.cli ? connectionOptions.cli.migrationsDir : undefined;
             } catch (err) { }
         }
 
         let connection: Connection|undefined = undefined;
         try {
-            const connectionOptionsReader = new ConnectionOptionsReader({ root: process.cwd(), configName: args.config });
-            const connectionOptions = await connectionOptionsReader.get(args.connection);
+            const connectionOptionsReader = new ConnectionOptionsReader({
+                root: process.cwd(),
+                configName: args.config as any
+            });
+            const connectionOptions = await connectionOptionsReader.get(args.connection as any);
             Object.assign(connectionOptions, {
                 synchronize: false,
                 migrationsRun: false,
@@ -73,25 +80,25 @@ export class MigrationGenerateCommand implements yargs.CommandModule {
 
             // mysql is exceptional here because it uses ` character in to escape names in queries, that's why for mysql
             // we are using simple quoted string instead of template string syntax
-            if (connection.driver instanceof MysqlDriver) {
-                sqlInMemory.upQueries.forEach(query => {
-                    upSqls.push("        await queryRunner.query(\"" + query.replace(new RegExp(`"`, "g"), `\\"`) + "\");");
+            if (connection.driver instanceof MysqlDriver || connection.driver instanceof AuroraDataApiDriver) {
+                sqlInMemory.upQueries.forEach(upQuery => {
+                    upSqls.push("        await queryRunner.query(\"" + upQuery.query.replace(new RegExp(`"`, "g"), `\\"`) + "\", " + JSON.stringify(upQuery.parameters) + ");");
                 });
-                sqlInMemory.downQueries.forEach(query => {
-                    downSqls.push("        await queryRunner.query(\"" + query.replace(new RegExp(`"`, "g"), `\\"`) + "\");");
+                sqlInMemory.downQueries.forEach(downQuery => {
+                    downSqls.push("        await queryRunner.query(\"" + downQuery.query.replace(new RegExp(`"`, "g"), `\\"`) + "\", " + JSON.stringify(downQuery.parameters) + ");");
                 });
             } else {
-                sqlInMemory.upQueries.forEach(query => {
-                    upSqls.push("        await queryRunner.query(`" + query.replace(new RegExp("`", "g"), "\\`") + "`);");
+                sqlInMemory.upQueries.forEach(upQuery => {
+                    upSqls.push("        await queryRunner.query(`" + upQuery.query.replace(new RegExp("`", "g"), "\\`") + "`, " + JSON.stringify(upQuery.parameters) + ");");
                 });
-                sqlInMemory.downQueries.forEach(query => {
-                    downSqls.push("        await queryRunner.query(`" + query.replace(new RegExp("`", "g"), "\\`") + "`);");
+                sqlInMemory.downQueries.forEach(downQuery => {
+                    downSqls.push("        await queryRunner.query(`" + downQuery.query.replace(new RegExp("`", "g"), "\\`") + "`, " + JSON.stringify(downQuery.parameters) + ");");
                 });
             }
 
             if (upSqls.length) {
                 if (args.name) {
-                    const fileContent = MigrationGenerateCommand.getTemplate(args.name, timestamp, upSqls, downSqls.reverse());
+                    const fileContent = MigrationGenerateCommand.getTemplate(args.name as any, timestamp, upSqls, downSqls.reverse());
                     const path = process.cwd() + "/" + (directory ? (directory + "/") : "") + filename;
                     await CommandUtils.createFile(path, fileContent);
 
@@ -121,9 +128,12 @@ export class MigrationGenerateCommand implements yargs.CommandModule {
      * Gets contents of the migration file.
      */
     protected static getTemplate(name: string, timestamp: number, upSqls: string[], downSqls: string[]): string {
+        const migrationName = `${camelCase(name, true)}${timestamp}`;
+
         return `import {MigrationInterface, QueryRunner} from "typeorm";
 
-export class ${camelCase(name, true)}${timestamp} implements MigrationInterface {
+export class ${migrationName} implements MigrationInterface {
+    name = '${migrationName}'
 
     public async up(queryRunner: QueryRunner): Promise<any> {
 ${upSqls.join(`

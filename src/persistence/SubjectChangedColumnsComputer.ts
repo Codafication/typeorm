@@ -2,6 +2,7 @@ import {Subject} from "./Subject";
 import {DateUtils} from "../util/DateUtils";
 import {ObjectLiteral} from "../common/ObjectLiteral";
 import {EntityMetadata} from "../metadata/EntityMetadata";
+import {OrmUtils} from "../util/OrmUtils";
 
 /**
  * Finds what columns are changed in the subject entities.
@@ -45,6 +46,11 @@ export class SubjectChangedColumnsComputer {
                 column.isCreateDate)
                 return;
 
+            const changeMap = subject.changeMaps.find(changeMap => changeMap.column === column);
+            if (changeMap) {
+                subject.changeMaps.splice(subject.changeMaps.indexOf(changeMap), 1);
+            }
+
             // get user provided value - column value from the user provided persisted entity
             const entityValue = column.getEntityValue(subject.entity!);
 
@@ -67,24 +73,50 @@ export class SubjectChangedColumnsComputer {
                 let normalizedValue = entityValue;
                 // normalize special values to make proper comparision
                 if (entityValue !== null) {
-                    if (column.type === "date") {
-                        normalizedValue = DateUtils.mixedDateToDateString(entityValue);
+                    switch (column.type) {
+                        case "date":
+                            normalizedValue = DateUtils.mixedDateToDateString(entityValue);
+                            break;
 
-                    } else if (column.type === "time") {
-                        normalizedValue = DateUtils.mixedDateToTimeString(entityValue);
+                        case "time":
+                        case "time with time zone":
+                        case "time without time zone":
+                        case "timetz":
+                            normalizedValue = DateUtils.mixedDateToTimeString(entityValue);
+                            break;
 
-                    } else if (column.type === "datetime" || column.type === Date) {
-                        normalizedValue = DateUtils.mixedDateToUtcDatetimeString(entityValue);
-                        databaseValue = DateUtils.mixedDateToUtcDatetimeString(databaseValue);
+                        case "datetime":
+                        case "datetime2":
+                        case Date:
+                        case "timestamp":
+                        case "timestamp without time zone":
+                        case "timestamp with time zone":
+                        case "timestamp with local time zone":
+                        case "timestamptz":
+                            normalizedValue = DateUtils.mixedDateToUtcDatetimeString(entityValue);
+                            databaseValue = DateUtils.mixedDateToUtcDatetimeString(databaseValue);
+                            break;
 
-                    } else if (column.type === "json" || column.type === "jsonb") {
-                        normalizedValue = JSON.stringify(entityValue);
-                        if (databaseValue !== null && databaseValue !== undefined)
-                            databaseValue = JSON.stringify(databaseValue);
+                        case "json":
+                        case "jsonb":
+                            // JSON.stringify doesn't work because postgresql sorts jsonb before save.
+                            // If you try to save json '[{"messages": "", "attribute Key": "", "level":""}] ' as jsonb,
+                            // then postgresql will save it as '[{"level": "", "message":"", "attributeKey": ""}]'
+                            if (OrmUtils.deepCompare(entityValue, databaseValue)) return;
+                            break;
 
-                    } else if (column.type === "simple-array") {
-                        normalizedValue = DateUtils.simpleArrayToString(entityValue);
-                        databaseValue = DateUtils.simpleArrayToString(databaseValue);
+                        case "simple-array":
+                            normalizedValue = DateUtils.simpleArrayToString(entityValue);
+                            databaseValue = DateUtils.simpleArrayToString(databaseValue);
+                            break;
+                        case "simple-enum":
+                            normalizedValue = DateUtils.simpleEnumToString(entityValue);
+                            databaseValue = DateUtils.simpleEnumToString(databaseValue);
+                            break;
+                        case "simple-json":
+                            normalizedValue = DateUtils.simpleJsonToString(entityValue);
+                            databaseValue = DateUtils.simpleJsonToString(databaseValue);
+                            break;
                     }
                 }
 
@@ -93,17 +125,10 @@ export class SubjectChangedColumnsComputer {
                     return;
             }
             subject.diffColumns.push(column);
-            // find if there is already a column to be changed
-            const changeMap = subject.changeMaps.find(changeMap => changeMap.column === column);
-            if (changeMap) { // and update its value if it was found
-                changeMap.value = entityValue;
-
-            } else { // if it wasn't found add a new column for change
-                subject.changeMaps.push({
-                    column: column,
-                    value: entityValue
-                });
-            }
+            subject.changeMaps.push({
+                column: column,
+                value: entityValue
+            });
         });
     }
 

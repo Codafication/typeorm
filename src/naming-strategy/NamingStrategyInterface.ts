@@ -60,7 +60,7 @@ export interface NamingStrategyInterface {
     /**
      * Gets the name of the foreign key.
      */
-    foreignKeyName(tableOrName: Table|string, columnNames: string[]): string;
+    foreignKeyName(tableOrName: Table|string, columnNames: string[], referencedTablePath?: string, referencedColumnNames?: string[]): string;
 
     /**
      * Gets the name of the index - simple and compose index.
@@ -117,4 +117,8 @@ export interface NamingStrategyInterface {
      */
     prefixTableName(prefix: string, tableName: string): string;
 
+    /**
+     * Gets the name of the alias used for relation joins.
+     */
+    eagerJoinRelationAlias(alias: string, propertyPath: string): string;
 }
