@@ -33,7 +33,7 @@ export class TreeRepository<Entity> extends Repository<Entity> {
         const escapeAlias = (alias: string) => this.manager.connection.driver.escape(alias);
         const escapeColumn = (column: string) => this.manager.connection.driver.escape(column);
         const parentPropertyName = this.manager.connection.namingStrategy.joinColumnName(
-          this.metadata.treeParentRelation!.propertyName, "id"
+          this.metadata.treeParentRelation!.propertyName, this.metadata.primaryColumns[0].propertyName
         );
 
         return this.createQueryBuilder("treeEntity")
@@ -264,8 +264,8 @@ export class TreeRepository<Entity> extends Repository<Entity> {
         const childProperty = this.metadata.treeChildrenRelation!.propertyName;
         const parentEntityId = this.metadata.primaryColumns[0].getEntityValue(entity);
         const childRelationMaps = relationMaps.filter(relationMap => relationMap.parentId === parentEntityId);
-        const childIds = childRelationMaps.map(relationMap => relationMap.id);
-        entity[childProperty] = entities.filter(entity => childIds.indexOf(entity.id) !== -1);
+        const childIds = new Set(childRelationMaps.map(relationMap => relationMap.id));
+        entity[childProperty] = entities.filter(entity => childIds.has(entity[this.metadata.primaryColumns[0].propertyName]));
         entity[childProperty].forEach((childEntity: any) => {
             this.buildChildrenEntityTree(childEntity, entities, relationMaps);
         });

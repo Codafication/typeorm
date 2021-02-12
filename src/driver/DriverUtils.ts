@@ -1,7 +1,7 @@
-import { Driver } from "./Driver";
-import { shorten } from "../util/StringUtils";
+import {Driver} from "./Driver";
+import { hash } from "../util/StringUtils";
 
-    /**
+/**
  * Common driver utility functions.
  */
 export class DriverUtils {
@@ -16,28 +16,28 @@ export class DriverUtils {
      */
     static buildDriverOptions(options: any, buildOptions?: { useSid: boolean }): any {
         if (options.url) {
-            const parsedUrl = this.parseConnectionUrl(options.url);
-            let urlDriverOptions: any = {
-                type: parsedUrl.type,
-                host: parsedUrl.host,
-                username: parsedUrl.username,
-                password: parsedUrl.password,
-                port: parsedUrl.port,
-                database: parsedUrl.database
-            };
-            if (buildOptions && buildOptions.useSid) {
-                urlDriverOptions.sid = parsedUrl.database;
+            const urlDriverOptions = this.parseConnectionUrl(options.url) as { [key: string]: any };
+
+            if (buildOptions && buildOptions.useSid && urlDriverOptions.database) {
+                urlDriverOptions.sid = urlDriverOptions.database;
             }
+
+            for (const key of Object.keys(urlDriverOptions)) {
+                if (typeof urlDriverOptions[key] === "undefined") {
+                    delete urlDriverOptions[key];
+                }
+            }
+
             return Object.assign({}, options, urlDriverOptions);
         }
         return Object.assign({}, options);
     }
 
     /**
-     * Builds column alias from given alias name and column name,
+     * Builds column alias from given alias name and column name.
+     *
      * If alias length is greater than the limit (if any) allowed by the current
-     * driver, abbreviates the longest part (alias or column name) in the resulting
-     * alias.
+     * driver, replaces it with a hashed string.
      *
      * @param driver Current `Driver`.
      * @param alias Alias part.
@@ -48,10 +48,9 @@ export class DriverUtils {
     static buildColumnAlias({ maxAliasLength }: Driver, alias: string, column: string): string {
         const columnAliasName = alias + "_" + column;
 
-        if (maxAliasLength && maxAliasLength > 0 && columnAliasName.length > maxAliasLength)
-            return alias.length > column.length
-                ? `${shorten(alias)}_${column}`
-                : `${alias}_${shorten(column)}`;
+        if (maxAliasLength && maxAliasLength > 0 && columnAliasName.length > maxAliasLength) {
+            return hash(columnAliasName, { length: maxAliasLength });
+        }
 
         return columnAliasName;
     }
@@ -69,7 +68,11 @@ export class DriverUtils {
         const preBase = url.substr(firstSlashes + 2);
         const secondSlash = preBase.indexOf("/");
         const base = (secondSlash !== -1) ? preBase.substr(0, secondSlash) : preBase;
-        const afterBase = (secondSlash !== -1) ? preBase.substr(secondSlash + 1) : undefined;
+        let afterBase = (secondSlash !== -1) ? preBase.substr(secondSlash + 1) : undefined;
+        // remove mongodb query params
+        if (afterBase && afterBase.indexOf("?") !== -1) {
+            afterBase = afterBase.substr(0, afterBase.indexOf("?"));
+        }
 
         const lastAtSign = base.lastIndexOf("@");
         const usernameAndPassword = base.substr(0, lastAtSign);

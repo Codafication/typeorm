@@ -21,10 +21,11 @@ There are several types of relations:
 There are several options you can specify for relations:
 
 * `eager: boolean` - If set to true, the relation will always be loaded with the main entity when using `find*` methods or `QueryBuilder` on this entity
-* `cascade: boolean | ("insert" | "update" | "remove")[]` - If set to true, the related object will be inserted and updated in the database. You can also specify an array of [cascade options](#cascade-options).
+* `cascade: boolean | ("insert" | "update")[]` - If set to true, the related object will be inserted and updated in the database. You can also specify an array of [cascade options](#cascade-options).
 * `onDelete: "RESTRICT"|"CASCADE"|"SET NULL"` - specifies how foreign key should behave when referenced object is deleted
 * `primary: boolean` - Indicates whether this relation's column will be a primary column or not.
 * `nullable: boolean` - Indicates whether this relation's column is nullable or not. By default it is nullable.
+* `orphanedRowAction: "nullify" | "delete"` - When a child row is removed from its parent, determines if the child row should be orphaned (default) or deleted.
 
 ## Cascades
 
@@ -96,7 +97,7 @@ Also, they provide a less explicit way of saving new objects into the database.
 
 ### Cascade Options
 
-The `cascade` option can be set as a `boolean` or an array of cascade options `("insert", "update", "remove")[]`.
+The `cascade` option can be set as a `boolean` or an array of cascade options `("insert" | "update" | "remove" | "soft-remove" | "recover")[]`.
 
 It will default to `false`, meaning no cascades. Setting `cascade: true` will enable full cascades. You can also specify options by providing an array.
 
@@ -184,7 +185,18 @@ category: Category;
 ```
 
 The relation now refers to `name` of the `Category` entity, instead of `id`.
-Column name for that relation will become `categoryName`
+Column name for that relation will become `categoryName`.
+
+You can also join multiple columns. Note that they do not reference the primary column of the related entity by default: you must provide the referenced column name.
+
+```typescript
+@ManyToOne(type => Category)
+@JoinColumn([
+    { name: "category_id", referencedColumnName: "id" },
+    { name: "locale_id", referencedColumnName: "locale_id" }
+])
+category: Category;
+```
 
 ## `@JoinTable` options
 
