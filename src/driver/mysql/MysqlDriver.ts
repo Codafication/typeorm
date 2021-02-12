@@ -18,6 +18,7 @@ import {MysqlConnectionCredentialsOptions} from "./MysqlConnectionCredentialsOpt
 import {EntityMetadata} from "../../metadata/EntityMetadata";
 import {OrmUtils} from "../../util/OrmUtils";
 import {ApplyValueTransformers} from "../../util/ApplyValueTransformers";
+import {ReplicationMode} from "../types/ReplicationMode";
 
 /**
  * Organizes communication with MySQL DBMS.
@@ -236,6 +237,9 @@ export class MysqlDriver implements Driver {
         updateDate: "datetime",
         updateDatePrecision: 6,
         updateDateDefault: "CURRENT_TIMESTAMP(6)",
+        deleteDate: "datetime",
+        deleteDatePrecision: 6,
+        deleteDateNullable: true,
         version: "int",
         treeLevel: "int",
         migrationId: "int",
@@ -297,7 +301,10 @@ export class MysqlDriver implements Driver {
 
     constructor(connection: Connection) {
         this.connection = connection;
-        this.options = connection.options as MysqlConnectionOptions;
+        this.options = {
+            legacySpatialSupport: true,
+            ...connection.options
+        } as MysqlConnectionOptions;
         this.isReplicated = this.options.replication ? true : false;
 
         // load mysql package
@@ -379,7 +386,7 @@ export class MysqlDriver implements Driver {
     /**
      * Creates a query runner used to execute database queries.
      */
-    createQueryRunner(mode: "master"|"slave" = "master") {
+    createQueryRunner(mode: ReplicationMode) {
         return new MysqlQueryRunner(this, mode);
     }
 
@@ -534,6 +541,15 @@ export class MysqlDriver implements Driver {
         } else if (column.type === "uuid") {
             return "varchar";
 
+        } else if (column.type === "json" && this.options.type === "mariadb") {
+            /*
+             * MariaDB implements this as a LONGTEXT rather, as the JSON data type contradicts the SQL standard,
+             * and MariaDB's benchmarks indicate that performance is at least equivalent.
+             *
+             * @see https://mariadb.com/kb/en/json-data-type/
+             */
+            return "longtext";
+
         } else if (column.type === "simple-array" || column.type === "simple-json") {
             return "text";
 
@@ -563,7 +579,7 @@ export class MysqlDriver implements Driver {
     /**
      * Normalizes "default" value of the column.
      */
-    normalizeDefault(columnMetadata: ColumnMetadata): string {
+    normalizeDefault(columnMetadata: ColumnMetadata): string | undefined {
         const defaultValue = columnMetadata.default;
 
         if ((columnMetadata.type === "enum" || columnMetadata.type === "simple-enum") && defaultValue !== undefined) {
@@ -575,7 +591,7 @@ export class MysqlDriver implements Driver {
         }
 
         if (typeof defaultValue === "number") {
-            return "" + defaultValue;
+            return `'${defaultValue.toFixed(columnMetadata.scale)}'`;
 
         } else if (typeof defaultValue === "boolean") {
             return defaultValue === true ? "1" : "0";
@@ -587,7 +603,7 @@ export class MysqlDriver implements Driver {
             return `'${defaultValue}'`;
 
         } else if (defaultValue === null) {
-            return `null`;
+            return undefined;
 
         } else {
             return defaultValue;
@@ -694,11 +710,13 @@ export class MysqlDriver implements Driver {
     /**
      * Creates generated map of values generated or returned by database after INSERT query.
      */
-    createGeneratedMap(metadata: EntityMetadata, insertResult: any) {
+    createGeneratedMap(metadata: EntityMetadata, insertResult: any, entityIndex: number) {
         const generatedMap = metadata.generatedColumns.reduce((map, generatedColumn) => {
             let value: any;
             if (generatedColumn.generationStrategy === "increment" && insertResult.insertId) {
-                value = insertResult.insertId;
+                // NOTE: When multiple rows is inserted by a single INSERT statement,
+                // `insertId` is the value generated for the first inserted row only.
+                value = insertResult.insertId + entityIndex;
             // } else if (generatedColumn.generationStrategy === "uuid") {
             //     console.log("getting db value:", generatedColumn.databaseName);
             //     value = generatedColumn.getEntityValue(uuidMap);
@@ -752,13 +770,13 @@ export class MysqlDriver implements Driver {
                 || tableColumn.type !== this.normalizeType(columnMetadata)
                 || tableColumn.length !== columnMetadataLength
                 || tableColumn.width !== columnMetadata.width
-                || tableColumn.precision !== columnMetadata.precision
-                || tableColumn.scale !== columnMetadata.scale
+                || (columnMetadata.precision !== undefined && tableColumn.precision !== columnMetadata.precision)
+                || (columnMetadata.scale !== undefined && tableColumn.scale !== columnMetadata.scale)
                 || tableColumn.zerofill !== columnMetadata.zerofill
                 || tableColumn.unsigned !== columnMetadata.unsigned
                 || tableColumn.asExpression !== columnMetadata.asExpression
                 || tableColumn.generatedType !== columnMetadata.generatedType
-                // || tableColumn.comment !== columnMetadata.comment // todo
+                || tableColumn.comment !== columnMetadata.comment
                 || !this.compareDefaultValues(this.normalizeDefault(columnMetadata), tableColumn.default)
                 || (tableColumn.enum && columnMetadata.enum && !OrmUtils.isArraysEqual(tableColumn.enum, columnMetadata.enum.map(val => val + "")))
                 || tableColumn.onUpdate !== columnMetadata.onUpdate
@@ -781,6 +799,13 @@ export class MysqlDriver implements Driver {
      */
     isUUIDGenerationSupported(): boolean {
         return false;
+    }
+
+    /**
+     * Returns true if driver supports fulltext indices.
+     */
+    isFullTextColumnTypeSupported(): boolean {
+        return true;
     }
 
     /**
@@ -825,7 +850,7 @@ export class MysqlDriver implements Driver {
      */
     protected createConnectionOptions(options: MysqlConnectionOptions, credentials: MysqlConnectionCredentialsOptions): Promise<any> {
 
-        credentials = Object.assign(credentials, DriverUtils.buildDriverOptions(credentials)); // todo: do it better way
+        credentials = Object.assign({}, credentials, DriverUtils.buildDriverOptions(credentials)); // todo: do it better way
 
         // build connection options for the driver
         return Object.assign({}, {
@@ -894,7 +919,7 @@ export class MysqlDriver implements Driver {
     /**
      * Checks if "DEFAULT" values in the column metadata and in the database are equal.
      */
-    protected compareDefaultValues(columnMetadataValue: string, databaseValue: string): boolean {
+    protected compareDefaultValues(columnMetadataValue: string | undefined, databaseValue: string | undefined): boolean {
         if (typeof columnMetadataValue === "string" && typeof databaseValue === "string") {
             // we need to cut out "'" because in mysql we can understand returned value is a string or a function
             // as result compare cannot understand if default is really changed or not
